@@ -63,7 +63,7 @@ end
 function fish_greeting
     for i in (seq 1 6); echo; end
     showcat_random 50x15
-    for i in (seq 1 32); echo; end
+    for i in (seq 1 16); echo; end
 end
 
 #####################################
