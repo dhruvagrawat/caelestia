@@ -6,10 +6,10 @@ return {
     ------------------
 
     -- Apps
-    terminal                   = "foot",
-    browser                    = "firefox",
-    editor                     = "codium",
-    fileExplorer               = "thunar",
+    terminal                   = "kitty",
+    browser                    = "google-chrome-stable",
+    editor                     = "code",
+    fileExplorer               = "dolphin",
     audioSettings              = "pwvucontrol",
 
     -- Touchpad
@@ -35,10 +35,10 @@ return {
     shadowColour               = "rgba(" .. scheme.inversePrimary .. "10)",
 
     -- Gaps
-    workspaceGaps              = 20,
-    windowGapsIn               = 5,
-    windowGapsOut              = 10,
-    singleWindowGapsOut        = 20,
+    workspaceGaps              = 10,
+    windowGapsIn               = 1,
+    windowGapsOut              = 1,
+    singleWindowGapsOut        = 2,
 
     -- Window styling
     windowOpacity              = 0.95,
