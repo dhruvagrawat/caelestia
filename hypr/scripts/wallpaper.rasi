@@ -1,0 +1,102 @@
+configuration {
+    show-icons:     true;
+    icon-theme:     "hicolor";
+}
+
+* {
+    font:               "Rubik 12";
+    background-color:   transparent;
+    text-color:         #ffffff;
+}
+
+window {
+    fullscreen:         true;
+    background-color:   rgba(0, 0, 0, 0.85);
+    border:             0px;
+}
+
+mainbox {
+    background-color:   transparent;
+    children:           [message, inputbar, listview];
+    spacing:            30px;
+    padding:            50px;
+}
+
+message {
+    background-color:   transparent;
+}
+
+textbox {
+    background-color:   transparent;
+    text-color:         rgba(255, 255, 255, 0.6);
+    font:               "Rubik 28";
+    horizontal-align:   0.5;
+    str:                "󰸉  Wallpapers";
+}
+
+inputbar {
+    background-color:   rgba(255, 255, 255, 0.1);
+    border-radius:      20px;
+    padding:            14px 24px;
+    border:             1px;
+    border-color:       rgba(255, 255, 255, 0.2);
+    children:           [prompt, entry];
+    expand:             false;
+    width:              500px;
+    horizontal-align:   0.5;
+    spacing:            10px;
+}
+
+prompt {
+    text-color:         rgba(255, 255, 255, 0.6);
+}
+
+entry {
+    text-color:         #ffffff;
+    placeholder:        "Search wallpapers...";
+    placeholder-color:  rgba(255, 255, 255, 0.3);
+}
+listview {
+    flow:               horizontal;
+    columns:            5;
+    lines:              3;
+    spacing:            16px;
+    background-color:   transparent;
+    scrollbar:          false;
+    fixed-height:       false;
+}
+
+element-icon {
+    size:               200px;
+    border-radius:      14px;
+}
+
+element {
+    background-color:   transparent;
+    border-radius:      0px;
+    border:             0px;
+    padding:            0px;
+    orientation:        vertical;
+}
+
+element selected normal {
+    background-color:   transparent;
+    border:             3px;
+    border-color:       rgba(255, 255, 255, 0.9);
+    border-radius:      16px;
+}
+
+element selected active {
+    background-color:   transparent;
+    border:             3px;
+    border-color:       rgba(255, 255, 255, 0.9);
+    border-radius:      16px;
+}
+
+
+element-text {
+    padding:            6px 4px 0px 4px;
+    horizontal-align:   0.5;
+    text-color:         rgba(255, 255, 255, 0.6);
+    font:               "Rubik 8";
+}

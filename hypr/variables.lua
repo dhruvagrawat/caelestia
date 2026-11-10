@@ -114,7 +114,8 @@ return {
 
     -- Apps
     kbTerminal                 = "SUPER + T",
-    kbBrowser                  = "SUPER + W",
+    kbBrowser                  = "SUPER + B",
+    kbWallpaper                = "SUPER + W",
     kbEditor                   = "SUPER + C",
     kbFileExplorer             = "SUPER + E",
     kbAudioSettings            = "CTRL + ALT + V",
