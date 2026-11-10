@@ -59,10 +59,11 @@ function showcat_random --argument-names size
     end
 end
 
-# Greeting: padding + random cat
+# Greeting: padding + random cat, then blank space for the cat to sit in
 function fish_greeting
     for i in (seq 1 6); echo; end
     showcat_random 50x15
+    for i in (seq 1 32); echo; end
 end
 
 #####################################
