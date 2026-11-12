@@ -20,6 +20,9 @@ StyledRect {
     property int chargeLimit: -1
     property int ledMode: -1
     property string colour: "ffffff"
+    // [{ n, synced, configured }] from ledstrip.sh status
+    property var strips: []
+    readonly property string ledScript: Quickshell.env("HOME") + "/.config/hypr/scripts/ledstrip.sh"
 
     readonly property var brightnessLevels: [
         { value: 0, label: "Off", arg: "off" },
@@ -57,6 +60,10 @@ StyledRect {
     }
 
     function setBrightness(level: var): void {
+        if (level.value === 0)
+            Quickshell.execDetached([ledScript, "power", "off"]);
+        else if (kbBrightness === 0)
+            Quickshell.execDetached([ledScript, "colour", colour]);
         kbBrightness = level.value;
         exec(["asusctl", "leds", "set", level.arg]);
     }
@@ -73,9 +80,16 @@ StyledRect {
 
     function setColour(hex: string): void {
         colour = hex;
+        Quickshell.execDetached([ledScript, "colour", hex]);
         const current = effects.find(e => e.value === ledMode);
         // Rainbow has no colour, so picking a colour switches to static
         setEffect(current && current.arg !== "rainbow-cycle" ? current.arg : "static", hex);
+    }
+
+    function toggleStrip(strip: var): void {
+        const on = !strip.synced;
+        Quickshell.execDetached(["sh", "-c", `"${ledScript}" sync ${strip.n} ${on ? "on" : "off"}` + (on ? ` && "${ledScript}" colour ${colour} ${strip.n}` : "")]);
+        refreshDelay.restart();
     }
 
     function setLimit(limit: int): void {
@@ -107,7 +121,7 @@ StyledRect {
     Process {
         id: reader
 
-        command: ["sh", "-c", "cat /sys/class/leds/asus::kbd_backlight/brightness; cat /sys/class/power_supply/BAT0/charge_control_end_threshold; busctl --system get-property xyz.ljones.Asusd /xyz/ljones/aura/tuf xyz.ljones.Aura LedModeData"]
+        command: ["sh", "-c", "cat /sys/class/leds/asus::kbd_backlight/brightness; cat /sys/class/power_supply/BAT0/charge_control_end_threshold; busctl --system get-property xyz.ljones.Asusd /xyz/ljones/aura/tuf xyz.ljones.Aura LedModeData; \"$HOME/.config/hypr/scripts/ledstrip.sh\" status"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const lines = text.trim().split("\n");
@@ -115,6 +129,10 @@ StyledRect {
                 root.chargeLimit = parseInt(lines[1]);
                 // "(uu(yyy)(yyy)ss) MODE ZONE R G B R2 G2 B2 ..."
                 const parts = (lines[2] ?? "").split(" ");
+                root.strips = lines.slice(3).filter(l => l.trim()).map(l => {
+                    const f = l.trim().split(" ");
+                    return { n: parseInt(f[0]), synced: f[1] === "synced", configured: f[2] === "configured" };
+                });
                 if (parts.length > 5) {
                     root.ledMode = parseInt(parts[1]);
                     root.colour = [parts[3], parts[4], parts[5]].map(v => parseInt(v).toString(16).padStart(2, "0")).join("");
@@ -239,6 +257,30 @@ StyledRect {
                     inactiveOnColour: Qt.color("#" + hex).hslLightness > 0.55 ? "#101010" : "#ffffff"
                     activeOnColour: inactiveOnColour
                     onClicked: root.setColour(hex)
+                }
+            }
+        }
+
+        ButtonRow {
+            Layout.fillWidth: true
+            spacing: Tokens.spacing.small
+
+            Repeater {
+                model: root.strips
+
+                TextButton {
+                    required property var modelData
+
+                    fillWidth: true
+                    type: TextButton.Tonal
+                    isToggle: false
+                    disabled: !modelData.configured
+                    checked: modelData.synced
+                    internalChecked: checked
+                    horizontalPadding: Tokens.padding.small
+                    verticalPadding: Tokens.padding.small
+                    text: !modelData.configured ? `LED strip ${modelData.n} · setup` : modelData.synced ? `LED strip ${modelData.n} · synced` : `LED strip ${modelData.n}`
+                    onClicked: root.toggleStrip(modelData)
                 }
             }
         }
