@@ -34,6 +34,18 @@ StyledRect {
         { value: 10, label: "Pulse", arg: "pulse" }
     ]
     readonly property var limits: [60, 80, 90, 100]
+    readonly property var presets: [
+        { name: "Theme", hex: "theme" },
+        { name: "Neon pink", hex: "ff2a6d" },
+        { name: "Cyber cyan", hex: "05d9e8" },
+        { name: "Volt", hex: "f9f002" },
+        { name: "Ultraviolet", hex: "9d00ff" },
+        { name: "Red", hex: "ff0033" },
+        { name: "Sunset", hex: "ff6a00" },
+        { name: "Matrix", hex: "39ff14" },
+        { name: "Deep blue", hex: "0040ff" },
+        { name: "White", hex: "ffffff" }
+    ]
 
     function toHex(c: color): string {
         return [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
@@ -201,80 +213,33 @@ StyledRect {
             }
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
-            spacing: Tokens.spacing.small
+            columns: 5
+            rowSpacing: Tokens.spacing.small
+            columnSpacing: Tokens.spacing.small
 
-            // Preview of the colour being picked
-            StyledRect {
-                implicitWidth: Tokens.padding.large * 2
-                implicitHeight: Tokens.padding.large * 2
-                radius: Tokens.rounding.full
-                color: hueSlider.pressed ? Qt.hsva(hueSlider.value, 1, 1, 1) : "#" + root.colour
-                border.width: 1
-                border.color: Qt.alpha(Colours.palette.m3onSurface, 0.3)
-            }
+            Repeater {
+                model: root.presets
 
-            Item {
-                Layout.fillWidth: true
-                implicitHeight: Tokens.padding.large * 2
+                TextButton {
+                    id: preset
 
-                // Rainbow track so it's clear this picks a hue
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: parent.height * 0.45
-                    radius: Tokens.rounding.extraSmall
+                    required property var modelData
+                    readonly property string hex: modelData.hex === "theme" ? root.toHex(Colours.palette.m3primary) : modelData.hex
+                    readonly property bool selected: root.colour.toLowerCase() === hex.toLowerCase()
 
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-
-                        GradientStop { position: 0.0; color: "#ff0000" }
-                        GradientStop { position: 0.17; color: "#ffff00" }
-                        GradientStop { position: 0.33; color: "#00ff00" }
-                        GradientStop { position: 0.5; color: "#00ffff" }
-                        GradientStop { position: 0.67; color: "#0000ff" }
-                        GradientStop { position: 0.83; color: "#ff00ff" }
-                        GradientStop { position: 1.0; color: "#ff0000" }
-                    }
+                    Layout.fillWidth: true
+                    isToggle: false
+                    verticalPadding: Tokens.padding.small
+                    font: Tokens.font.body.builders.small.size(Math.round(Tokens.font.body.small.pointSize * 0.85)).build()
+                    text: selected ? "● " + modelData.name : modelData.name
+                    inactiveColour: "#" + hex
+                    activeColour: "#" + hex
+                    inactiveOnColour: Qt.color("#" + hex).hslLightness > 0.55 ? "#101010" : "#ffffff"
+                    activeOnColour: inactiveOnColour
+                    onClicked: root.setColour(hex)
                 }
-
-                StyledSlider {
-                    id: hueSlider
-
-                    anchors.fill: parent
-                    bgColour: "transparent"
-                    from: 0
-                    to: 1
-                    fgColour: Qt.hsva(value, 1, 1, 1)
-                    value: {
-                        const h = Qt.color("#" + root.colour).hsvHue;
-                        return h < 0 ? 0 : h;
-                    }
-
-                    onPressedChanged: if (!pressed) root.setColour(root.toHex(Qt.hsva(value, 1, 1, 1)))
-                    onMoved: if (!pressed) wheelApply.restart()
-
-                    Timer {
-                        id: wheelApply
-
-                        interval: 300
-                        onTriggered: root.setColour(root.toHex(Qt.hsva(hueSlider.value, 1, 1, 1)))
-                    }
-                }
-            }
-
-            Choice {
-                Layout.fillWidth: false
-                text: qsTr("White")
-                onClicked: root.setColour("ffffff")
-            }
-
-            Choice {
-                Layout.fillWidth: false
-                text: qsTr("Theme")
-                onClicked: root.setColour(root.toHex(Colours.palette.m3primary))
             }
         }
 

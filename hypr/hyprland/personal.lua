@@ -2,6 +2,10 @@
 local vars    = require("variables")
 local scripts = os.getenv("HOME") .. "/.config/hypr/scripts"
 
+-- Screenshots and recordings go to ~/Documents/Captures
+hl.env("CAELESTIA_SCREENSHOTS_DIR", os.getenv("HOME") .. "/Documents/Captures/Screenshots")
+hl.env("CAELESTIA_RECORDINGS_DIR", os.getenv("HOME") .. "/Documents/Captures/Recordings")
+
 hl.on("hyprland.start", function()
     -- Per-monitor wallpapers via awww (restores last wallpaper on each monitor)
     hl.exec_cmd("awww-daemon")

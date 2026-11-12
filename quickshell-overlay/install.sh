@@ -22,6 +22,7 @@ PATCHED=(
 # Files we add: "<file in this folder>:<path in overlay>"
 ADDED=(
     AsusCard.qml:modules/utilities/cards/AsusCard.qml
+    CaptureCard.qml:modules/utilities/cards/CaptureCard.qml
     AppStreams.qml:modules/bar/popouts/AppStreams.qml
 )
 
@@ -30,7 +31,8 @@ restart_shell() {
     sleep 1
     pkill -x -f "qs -c caelestia -n -d" 2>/dev/null || true
     sleep 0.5
-    setsid -f caelestia shell -d >/dev/null 2>&1
+    # Launch through Hyprland so the shell gets Hyprland's environment (hl.env)
+    hyprctl dispatch 'hl.dsp.exec_cmd("caelestia shell -d")' >/dev/null 2>&1 || setsid -f caelestia shell -d >/dev/null 2>&1
     # Keep awake is on by default (see hypr/hyprland/personal.lua); restore it after restart
     setsid -f sh -c 'for i in $(seq 30); do qs -c caelestia ipc call idleInhibitor enable 2>/dev/null && exit; sleep 1; done' >/dev/null 2>&1
 }
@@ -94,10 +96,10 @@ for a in "${ADDED[@]}"; do ln -s "$HERE/${a%%:*}" "$TMP/${a#*:}"; done
 
 ok=1
 
-# Utilities popup: add the ASUS card at the end of the cards column
+# Utilities popup: add the Capture and ASUS cards at the end of the cards column
 patch_file modules/utilities/Content.qml '
-    my $card = "\n\n        AsusCard {\n            id: asusCard\n\n            Layout.fillWidth: true\n        }";
-    $n += s|(readonly property real nonAnimHeight: [^\n]*)|$1 + asusCard.implicitHeight + layout.spacing|;
+    my $card = "\n\n        CaptureCard {\n            id: captureCard\n\n            Layout.fillWidth: true\n            screenState: root.screenState\n        }\n\n        AsusCard {\n            id: asusCard\n\n            Layout.fillWidth: true\n        }";
+    $n += s|(readonly property real nonAnimHeight: [^\n]*)|$1 + captureCard.implicitHeight + asusCard.implicitHeight + layout.spacing * 2|;
     $n += s|(\n        \})(\n    \}\n\n    RecordingDeleteModal \{)|$1$card$2|;
 ' 2 || ok=0
 
