@@ -42,7 +42,7 @@ return {
 
     -- Window styling
     windowOpacity              = 0.95,
-    windowRounding             = 15,
+    windowRounding             = 6,
     windowRoundingPower        = 2,
     windowBorderSize           = 1,
     activeWindowBorderColour   = "rgba(" .. scheme.primary .. "e6)",

@@ -34,7 +34,6 @@ StyledRect {
         { value: 10, label: "Pulse", arg: "pulse" }
     ]
     readonly property var limits: [60, 80, 90, 100]
-    readonly property var swatches: [toHex(Colours.palette.m3primary), "ffffff", "ff0000", "ff6a00", "ffd000", "00ff66", "00aaff", "8a2be2", "ff00aa"]
 
     function toHex(c: color): string {
         return [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
@@ -206,37 +205,76 @@ StyledRect {
             Layout.fillWidth: true
             spacing: Tokens.spacing.small
 
-            Repeater {
-                model: root.swatches
+            // Preview of the colour being picked
+            StyledRect {
+                implicitWidth: Tokens.padding.large * 2
+                implicitHeight: Tokens.padding.large * 2
+                radius: Tokens.rounding.full
+                color: hueSlider.pressed ? Qt.hsva(hueSlider.value, 1, 1, 1) : "#" + root.colour
+                border.width: 1
+                border.color: Qt.alpha(Colours.palette.m3onSurface, 0.3)
+            }
 
-                StyledRect {
-                    id: swatch
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: Tokens.padding.large * 2
 
-                    required property string modelData
-                    required property int index
-                    readonly property bool selected: root.colour.toLowerCase() === modelData.toLowerCase()
+                // Rainbow track so it's clear this picks a hue
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: parent.height * 0.45
+                    radius: Tokens.rounding.extraSmall
 
-                    Layout.fillWidth: true
-                    implicitHeight: Tokens.padding.large * 2
-                    radius: Tokens.rounding.full
-                    color: "#" + modelData
-                    border.width: selected ? 3 : 1
-                    border.color: selected ? Colours.palette.m3onSurface : Qt.alpha(Colours.palette.m3onSurface, 0.2)
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
 
-                    MaterialIcon {
-                        anchors.centerIn: parent
-                        visible: swatch.index === 0
-                        text: "palette"
-                        color: Colours.palette.m3onPrimary
-                        fontStyle: Tokens.font.icon.small
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.setColour(swatch.modelData)
+                        GradientStop { position: 0.0; color: "#ff0000" }
+                        GradientStop { position: 0.17; color: "#ffff00" }
+                        GradientStop { position: 0.33; color: "#00ff00" }
+                        GradientStop { position: 0.5; color: "#00ffff" }
+                        GradientStop { position: 0.67; color: "#0000ff" }
+                        GradientStop { position: 0.83; color: "#ff00ff" }
+                        GradientStop { position: 1.0; color: "#ff0000" }
                     }
                 }
+
+                StyledSlider {
+                    id: hueSlider
+
+                    anchors.fill: parent
+                    bgColour: "transparent"
+                    from: 0
+                    to: 1
+                    fgColour: Qt.hsva(value, 1, 1, 1)
+                    value: {
+                        const h = Qt.color("#" + root.colour).hsvHue;
+                        return h < 0 ? 0 : h;
+                    }
+
+                    onPressedChanged: if (!pressed) root.setColour(root.toHex(Qt.hsva(value, 1, 1, 1)))
+                    onMoved: if (!pressed) wheelApply.restart()
+
+                    Timer {
+                        id: wheelApply
+
+                        interval: 300
+                        onTriggered: root.setColour(root.toHex(Qt.hsva(hueSlider.value, 1, 1, 1)))
+                    }
+                }
+            }
+
+            Choice {
+                Layout.fillWidth: false
+                text: qsTr("White")
+                onClicked: root.setColour("ffffff")
+            }
+
+            Choice {
+                Layout.fillWidth: false
+                text: qsTr("Theme")
+                onClicked: root.setColour(root.toHex(Colours.palette.m3primary))
             }
         }
 

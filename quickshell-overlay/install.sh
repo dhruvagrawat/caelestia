@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Builds ~/.config/quickshell/caelestia as a thin overlay over the packaged shell:
-# everything is a symlink to /etc/xdg/quickshell/caelestia except
-# modules/utilities/Content.qml (patched to add the ASUS card) and the card itself.
-# Package updates flow through the symlinks. If the patch can't be applied
-# (upstream changed Content.qml), the overlay is removed so the stock shell runs.
+# Builds ~/.config/quickshell/caelestia as a thin overlay over the packaged shell.
+# Everything is a symlink to /etc/xdg/quickshell/caelestia, except:
+#   - files patched below (copied from the package, then edited)
+#   - extra files added from this folder (symlinked)
+# Package updates flow through the symlinks. If any patch can't be applied
+# (upstream changed that file), nothing is installed and the stock shell is used.
 #
 # Usage: install.sh [--restart]   |   install.sh --remove
 
@@ -13,10 +14,25 @@ SRC=/etc/xdg/quickshell/caelestia
 DST="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/caelestia"
 HERE="$(dirname "$(readlink -f "$0")")"
 
+# Files we patch (relative to SRC)
+PATCHED=(
+    modules/utilities/Content.qml
+    modules/bar/popouts/AudioPopout.qml
+)
+# Files we add: "<file in this folder>:<path in overlay>"
+ADDED=(
+    AsusCard.qml:modules/utilities/cards/AsusCard.qml
+    AppStreams.qml:modules/bar/popouts/AppStreams.qml
+)
+
 restart_shell() {
     caelestia shell -k >/dev/null 2>&1 || true
+    sleep 1
+    pkill -x -f "qs -c caelestia -n -d" 2>/dev/null || true
     sleep 0.5
     setsid -f caelestia shell -d >/dev/null 2>&1
+    # Keep awake is on by default (see hypr/hyprland/personal.lua); restore it after restart
+    setsid -f sh -c 'for i in $(seq 30); do qs -c caelestia ipc call idleInhibitor enable 2>/dev/null && exit; sleep 1; done' >/dev/null 2>&1
 }
 
 remove_overlay() {
@@ -36,40 +52,65 @@ if [ -e "$DST" ] && [ ! -f "$DST/.caelestia-overlay" ]; then
     exit 1
 fi
 
-link_all_except() { # src_dir dst_dir except...
-    local s=$1 d=$2; shift 2
-    mkdir -p "$d"
-    for entry in "$s"/* "$s"/.[!.]*; do
+# Paths that must be real (not symlinked): every patched/added file and its parent dirs
+declare -A KEEP=()
+mark_keep() {
+    local p=$1
+    while [ "$p" != "." ]; do KEEP[$p]=1; p=$(dirname "$p"); done
+}
+for f in "${PATCHED[@]}"; do mark_keep "$f"; done
+for a in "${ADDED[@]}"; do mark_keep "${a#*:}"; done
+
+# Mirror SRC/rel into TMP/rel: symlink everything not in KEEP, recurse into kept dirs
+mirror() {
+    local rel=$1
+    mkdir -p "$TMP/$rel"
+    for entry in "$SRC/$rel"/* "$SRC/$rel"/.[!.]*; do
         [ -e "$entry" ] || continue
-        local name; name=$(basename "$entry")
-        local skip=0
-        for ex in "$@"; do [ "$name" = "$ex" ] && skip=1; done
-        [ $skip = 1 ] || ln -s "$entry" "$d/$name"
+        local child=${entry#"$SRC/"}
+        child=${child#./}
+        if [ -n "${KEEP[$child]:-}" ]; then
+            [ -d "$entry" ] && mirror "$child"
+        else
+            ln -s "$entry" "$TMP/$child"
+        fi
     done
+}
+
+# patch <rel path> <perl program that must make exactly N substitutions> <N>
+patch_file() {
+    local rel=$1 prog=$2 want=$3
+    WANT=$want perl -0pe "$prog"' END { exit($n == $ENV{WANT} ? 0 : 1) }' "$SRC/$rel" > "$TMP/$rel" || {
+        echo "Could not patch $rel (upstream changed it). Using stock shell." >&2
+        return 1
+    }
 }
 
 TMP="$DST.tmp.$$"
 rm -rf "$TMP"
 trap 'rm -rf "$TMP"' EXIT
+mirror .
+for a in "${ADDED[@]}"; do ln -s "$HERE/${a%%:*}" "$TMP/${a#*:}"; done
 
-link_all_except "$SRC" "$TMP" modules
-link_all_except "$SRC/modules" "$TMP/modules" utilities
-link_all_except "$SRC/modules/utilities" "$TMP/modules/utilities" Content.qml cards
-link_all_except "$SRC/modules/utilities/cards" "$TMP/modules/utilities/cards"
-ln -s "$HERE/AsusCard.qml" "$TMP/modules/utilities/cards/AsusCard.qml"
+ok=1
 
-# Patch Content.qml: add the card loader at the end of the cards column,
-# and include it in the height used for the open/close animation.
-perl -0pe '
+# Utilities popup: add the ASUS card at the end of the cards column
+patch_file modules/utilities/Content.qml '
     my $card = "\n\n        AsusCard {\n            id: asusCard\n\n            Layout.fillWidth: true\n        }";
     $n += s|(readonly property real nonAnimHeight: [^\n]*)|$1 + asusCard.implicitHeight + layout.spacing|;
     $n += s|(\n        \})(\n    \}\n\n    RecordingDeleteModal \{)|$1$card$2|;
-    END { exit($n == 2 ? 0 : 1) }
-' "$SRC/modules/utilities/Content.qml" > "$TMP/modules/utilities/Content.qml" || {
-    echo "Could not patch Content.qml (upstream changed it). Using stock shell." >&2
+' 2 || ok=0
+
+# Bar audio popout: add per-app volume + output routing above "Open settings"
+patch_file modules/bar/popouts/AudioPopout.qml '
+    my $apps = "        AppStreams {\n            Layout.fillWidth: true\n            Layout.topMargin: Tokens.spacing.medium\n        }\n\n";
+    $n += s|(\n)(        IconTextButton \{\n)|$1$apps$2|;
+' 1 || ok=0
+
+if [ $ok = 0 ]; then
     remove_overlay
     exit 1
-}
+fi
 
 touch "$TMP/.caelestia-overlay"
 remove_overlay
