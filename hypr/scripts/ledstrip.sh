@@ -96,6 +96,18 @@ targets() { # explicit strip, or all synced strips
     for i in "${!STRIPS[@]}"; do [ -f "$STATE/$((i + 1)).sync" ] && echo $((i + 1)); done
 }
 
+# If the light daemon is running, route through it (it holds the connections)
+LIGHTD="$(dirname "$(readlink -f "$0")")/lightd.py"
+SOCK="$STATE/../lights/lightd.sock"
+if [ -S "$SOCK" ] && [ "$1" != sync ] && [ "$1" != status ]; then
+    keys=$(for n in $(targets "$3"); do printf '"s%s",' "$n"; done)
+    keys="[${keys%,}]"
+    case $1 in
+        colour) exec /usr/bin/python3 -I "$LIGHTD" send "{\"cmd\":\"colour\",\"targets\":$keys,\"hex\":\"${2#\#}\"}" ;;
+        power) exec /usr/bin/python3 -I "$LIGHTD" send "{\"cmd\":\"power\",\"targets\":$keys,\"on\":$([ "$2" = on ] && echo true || echo false)}" ;;
+    esac
+fi
+
 case $1 in
 colour)
     hex=${2#\#}

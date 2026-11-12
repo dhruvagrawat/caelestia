@@ -10,6 +10,9 @@ hl.on("hyprland.start", function()
     -- Per-monitor wallpapers via awww (restores last wallpaper on each monitor)
     hl.exec_cmd("awww-daemon")
 
+    -- Light daemon: keyboard + LED strips (Lights tab in the dashboard)
+    hl.exec_cmd(scripts .. "/lightd.py >> ~/.local/state/lights/lightd.log 2>&1")
+
     -- Keep Awake on by default (no idle lock/screen-off/sleep).
     -- Toggle it off in the utilities popup when you want auto-sleep.
     -- Retries until the caelestia shell's IPC is up.

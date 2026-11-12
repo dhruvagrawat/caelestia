@@ -18,12 +18,14 @@ HERE="$(dirname "$(readlink -f "$0")")"
 PATCHED=(
     modules/utilities/Content.qml
     modules/bar/popouts/AudioPopout.qml
+    modules/dashboard/Content.qml
 )
 # Files we add: "<file in this folder>:<path in overlay>"
 ADDED=(
     AsusCard.qml:modules/utilities/cards/AsusCard.qml
     CaptureCard.qml:modules/utilities/cards/CaptureCard.qml
     AppStreams.qml:modules/bar/popouts/AppStreams.qml
+    LightsTab.qml:modules/dashboard/LightsTab.qml
 )
 
 restart_shell() {
@@ -108,6 +110,14 @@ patch_file modules/bar/popouts/AudioPopout.qml '
     my $apps = "        AppStreams {\n            Layout.fillWidth: true\n            Layout.topMargin: Tokens.spacing.medium\n        }\n\n";
     $n += s|(\n)(        IconTextButton \{\n)|$1$apps$2|;
 ' 1 || ok=0
+
+# Dashboard: add a "Lights" tab after Weather
+patch_file modules/dashboard/Content.qml '
+    my $tab = ",\n            {\n                component: lightsComponent,\n                iconName: \"light_group\",\n                text: \"Lights\",\n                enabled: true\n            }";
+    my $comp = "            Component {\n                id: lightsComponent\n\n                LightsTab {}\n            }\n\n";
+    $n += s|(enabled: Config\.dashboard\.showWeather\n            \})|$1$tab|;
+    $n += s|(\n)(            Behavior on contentX \{)|$1$comp$2|;
+' 2 || ok=0
 
 if [ $ok = 0 ]; then
     remove_overlay
