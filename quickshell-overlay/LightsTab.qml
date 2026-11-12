@@ -42,7 +42,13 @@ Item {
         { id: "static", label: "Static" },
         { id: "breathe", label: "Breathe" },
         { id: "rainbow", label: "Rainbow" },
-        { id: "strobe", label: "Strobe" }
+        { id: "strobe", label: "Strobe" },
+        { id: "ambient", label: "Screen sync" }
+    ]
+    readonly property var monitors: [
+        { id: "DP-1", label: "DP-1 (left)" },
+        { id: "HDMI-A-1", label: "HDMI (right)" },
+        { id: "eDP-1", label: "Laptop" }
     ]
 
     function toHex(c: color): string {
@@ -75,7 +81,7 @@ Item {
             return Qt.rgba(0.08, 0.08, 0.1, 1);
         const sp = ({ slow: 0.35, med: 1.0, fast: 2.5 })[l.speed] ?? 1;
         let k = l.brightness / 100;
-        let c = Qt.color("#" + l.hex);
+        let c = Qt.color("#" + (l.mode === "ambient" && l.live ? l.live : l.hex));
         if (l.mode === "breathe")
             k *= 0.12 + 0.88 * (0.5 + 0.5 * Math.sin(t * sp * 2.2));
         else if (l.mode === "strobe")
@@ -417,6 +423,43 @@ Item {
                         checked: root.lead?.speed === modelData
                         internalChecked: checked
                         onClicked: root.act("speed", { speed: modelData })
+                    }
+                }
+            }
+        }
+
+        // Screen sync: which monitor to follow
+        RowLayout {
+            visible: root.lead?.mode === "ambient"
+            Layout.fillWidth: true
+            Layout.leftMargin: Tokens.padding.large
+            Layout.rightMargin: Tokens.padding.large
+            spacing: Tokens.spacing.medium
+
+            MaterialIcon {
+                text: "monitor"
+                color: Colours.palette.m3primary
+            }
+
+            StyledText {
+                text: qsTr("Follow colours of")
+                color: Colours.palette.m3onSurfaceVariant
+            }
+
+            ButtonRow {
+                Layout.fillWidth: true
+                spacing: Tokens.spacing.small
+
+                Repeater {
+                    model: root.monitors
+
+                    Choice {
+                        required property var modelData
+
+                        text: modelData.label
+                        checked: root.lead?.monitor === modelData.id
+                        internalChecked: checked
+                        onClicked: root.act("monitor", { monitor: modelData.id })
                     }
                 }
             }

@@ -10,7 +10,8 @@ Keeps the strips connected so changes are instant and software effects
       {"cmd": "colour", "targets": ["kb", "s1"], "hex": "05d9e8"}
       {"cmd": "brightness", "targets": [...], "value": 0-100}
       {"cmd": "power", "targets": [...], "on": true}
-      {"cmd": "mode", "targets": [...], "mode": "static|breathe|rainbow|strobe"}
+      {"cmd": "mode", "targets": [...], "mode": "static|breathe|rainbow|strobe|ambient"}
+      {"cmd": "monitor", "targets": [...], "monitor": "DP-1"}   (screen used by ambient)
       {"cmd": "speed", "targets": [...], "speed": "slow|med|fast"}
       {"cmd": "timer", "minutes": 30}        (0 cancels; turns all lights off)
       {"cmd": "release"} / {"cmd": "reconnect"}
@@ -56,11 +57,12 @@ class Light:
         self.key, self.name = key, name
         self.on, self.hex, self.brightness = True, "05d9e8", 100
         self.mode, self.speed = "static", "med"
+        self.monitor = "DP-1"
         self.connected = False
 
     def state(self):
         return {"name": self.name, "on": self.on, "hex": self.hex, "brightness": self.brightness,
-                "mode": self.mode, "speed": self.speed, "connected": self.connected}
+                "mode": self.mode, "speed": self.speed, "monitor": self.monitor, "connected": self.connected}
 
 
 class Strip(Light):
@@ -162,7 +164,7 @@ class Keyboard(Light):
             lvl = int(Path("/sys/class/leds/asus::kbd_backlight/brightness").read_text())
             out = subprocess.run(["busctl", "--system", "get-property", "xyz.ljones.Asusd", "/xyz/ljones/aura/tuf",
                                   "xyz.ljones.Aura", "LedModeData"], capture_output=True, text=True, timeout=3).stdout.split()
-            mode = {0: "static", 1: "breathe", 2: "rainbow", 10: "strobe"}.get(int(out[1]), self.mode)
+            mode = {0: "static", 1: "breathe", 2: "rainbow", 10: "strobe"}.get(int(out[1]), self.hw_mode())
             hexs = hexstr(int(out[3]), int(out[4]), int(out[5]))
         except Exception:  # noqa: BLE001
             return
@@ -170,11 +172,18 @@ class Keyboard(Light):
         if want and (lvl, mode, hexs) == want:
             return
         # external change
+        if self.mode == "ambient" and mode == "static" and want and want[0] == lvl:
+            # our own ambient colour updates; keep ambient mode
+            self.applied = (lvl, mode, hexs)
+            return
         self.on = lvl > 0
         if lvl > 0:
             self.brightness = round(lvl / 3 * 100)
         self.mode, self.hex = mode, hexs
         self.applied = (lvl, mode, hexs)
+
+    def hw_mode(self):
+        return "static" if self.mode == "ambient" else self.mode
 
     def apply(self):
         lvl = 0 if not self.on else max(1, round(self.brightness / 100 * 3))
@@ -187,9 +196,9 @@ class Keyboard(Light):
                 "breathe": base + ["breathe", "--colour", self.hex, "--colour2", "000000", "--speed", speed],
                 "rainbow": base + ["rainbow-cycle", "--speed", speed],
                 "strobe": base + ["pulse", "-c", self.hex],
-            }[self.mode]
+            }[self.hw_mode()]
             subprocess.run(cmd, capture_output=True, timeout=5)
-        self.applied = (lvl, self.mode, self.hex)
+        self.applied = (lvl, self.hw_mode(), self.hex)
 
 
 class Daemon:
@@ -199,6 +208,7 @@ class Daemon:
         self.lights = {"kb": self.kb, **self.strips}
         self.timer_end = 0
         self.dirty = True
+        self.ambient = {}  # monitor -> smoothed (r, g, b)
         self.load()
 
     # ---- persistence -------------------------------------------------------
@@ -207,7 +217,7 @@ class Daemon:
             data = json.loads(STATE_FILE.read_text())
             for k, l in self.lights.items():
                 s = data.get("lights", {}).get(k, {})
-                for f in ("on", "hex", "brightness", "mode", "speed"):
+                for f in ("on", "hex", "brightness", "mode", "speed", "monitor"):
                     if f in s:
                         setattr(l, f, s[f])
             self.timer_end = data.get("timerEnd", 0) / 1000
@@ -215,7 +225,11 @@ class Daemon:
             pass
 
     def save(self):
-        data = {"lights": {k: l.state() for k, l in self.lights.items()},
+        lights = {k: l.state() for k, l in self.lights.items()}
+        for k, l in self.lights.items():
+            if l.mode == "ambient" and l.monitor in self.ambient:
+                lights[k]["live"] = hexstr(*self.ambient[l.monitor])
+        data = {"lights": lights,
                 "timerEnd": int(self.timer_end * 1000), "updated": int(time.time() * 1000)}
         tmp = STATE_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(data))
@@ -239,6 +253,8 @@ class Daemon:
                 l.mode, l.on = msg["mode"], True
             elif cmd == "speed":
                 l.speed = msg["speed"]
+            elif cmd == "monitor":
+                l.monitor = msg["monitor"]
             kb_changed |= l is self.kb
         if cmd == "timer":
             m = float(msg.get("minutes", 0))
@@ -273,8 +289,7 @@ class Daemon:
             await server.serve_forever()
 
     # ---- loops --------------------------------------------------------------
-    @staticmethod
-    def frame_colour(light, t):
+    def frame_colour(self, light, t):
         """Colour the strip should show at time t (software effects)."""
         if not light.on:
             return None
@@ -288,6 +303,8 @@ class Daemon:
         elif light.mode == "rainbow":
             h = (t * sp * 0.08) % 1
             r, g, b = (c * 255 for c in colorsys.hsv_to_rgb(h, 1, 1))
+        elif light.mode == "ambient":
+            r, g, b = self.ambient.get(light.monitor, (r, g, b))
         return round(r * k), round(g * k), round(b * k)
 
     async def strip_loop(self, strip):
@@ -300,6 +317,61 @@ class Daemon:
                 await strip.show(*c)
             animated = strip.on and strip.mode != "static"
             await asyncio.sleep(0.08 if animated else 0.3)
+
+    @staticmethod
+    def screen_colour(ppm):
+        """Average screen colour, weighted towards vivid pixels, from a binary PPM."""
+        parts = ppm.split(maxsplit=4)
+        w, h, data = int(parts[1]), int(parts[2]), parts[4]
+        sr = sg = sb = sw = 0.0
+        for i in range(0, min(len(data), w * h * 3) - 2, 3):
+            r, g, b = data[i], data[i + 1], data[i + 2]
+            mx, mn = max(r, g, b), min(r, g, b)
+            wgt = 1 + 6 * ((mx - mn) / 255) * (mx / 255)  # vivid pixels count more
+            sr += r * wgt
+            sg += g * wgt
+            sb += b * wgt
+            sw += wgt
+        r, g, b = sr / sw, sg / sw, sb / sw
+        # gentle saturation boost so LEDs don't look washed out
+        hh, ss, vv = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        r, g, b = colorsys.hsv_to_rgb(hh, min(1, ss * 1.35), min(1, vv * 1.15))
+        return r * 255, g * 255, b * 255
+
+    async def ambient_loop(self):
+        """Only captures while at least one light is on in ambient mode."""
+        kb_last = 0
+        while True:
+            mons = {l.monitor for l in self.lights.values() if l.on and l.mode == "ambient"}
+            if not mons:
+                self.ambient.clear()
+                await asyncio.sleep(0.5)
+                continue
+            for mon in mons:
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        "grim", "-s", "0.04", "-t", "ppm", "-o", mon, "-",
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                    out, _ = await proc.communicate()
+                    target = self.screen_colour(out)
+                except Exception as e:  # noqa: BLE001
+                    log(f"ambient {mon}: {e}")
+                    continue
+                prev = self.ambient.get(mon, target)
+                a = 0.35  # smoothing: glide instead of flicker
+                self.ambient[mon] = tuple(p + (t - p) * a for p, t in zip(prev, target))
+            self.dirty = True  # housekeeping saves at most twice a second
+            # keyboard: at most once a second, only on a noticeable change
+            kb = self.kb
+            if kb.on and kb.mode == "ambient" and kb.monitor in self.ambient and time.time() - kb_last > 1:
+                new = hexstr(*self.ambient[kb.monitor])
+                old = rgb(kb.hex)
+                if sum(abs(x - y) for x, y in zip(old, rgb(new))) > 40:
+                    kb.hex = new
+                    kb_last = time.time()
+                    await asyncio.get_running_loop().run_in_executor(None, kb.apply)
+                    self.dirty = True
+            await asyncio.sleep(0.12)
 
     async def housekeeping(self):
         n = 0
@@ -321,9 +393,12 @@ class Daemon:
 
     async def run(self):
         STATE_DIR.mkdir(parents=True, exist_ok=True)
+        # Drop connections left over from a previous run, or connecting fails with InProgress
+        for st in self.strips.values():
+            subprocess.run(["bluetoothctl", "disconnect", st.cfg["mac"]], capture_output=True, timeout=10)
         self.kb.read()
         self.save()
-        await asyncio.gather(self.serve(), self.housekeeping(),
+        await asyncio.gather(self.serve(), self.housekeeping(), self.ambient_loop(),
                              *(self.strip_loop(s) for s in self.strips.values()))
 
 
